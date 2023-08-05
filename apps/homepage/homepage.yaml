@@ -1,0 +1,226 @@
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: homepage
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:9.3-alpine
+        volumeMounts:
+        - name: db
+          mountPath: /var/lib/postgresql/data
+        envFrom:
+        - secretRef:
+            name: env
+      volumes:
+      - name: db
+        hostPath:
+          path: /srv/homepage/postgres/data
+          type: DirectoryOrCreate
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: homepage
+spec:
+  selector:
+    app: postgres
+  type: ClusterIP
+  ports:
+  - port: 5432
+    protocol: TCP
+    targetPort: 5432
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: redis
+  namespace: homepage
+spec:
+  serviceName: redis
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+      - name: redis
+        image: redis:4-alpine
+        envFrom:
+        - secretRef:
+            name: env
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: homepage
+spec:
+  selector:
+    app: redis
+  type: ClusterIP
+  ports:
+  - port: 6379
+    protocol: TCP
+    targetPort: 6379
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: homepage
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      containers:
+      - name: upnl-org
+        image: ghcr.io/upnl/upnl-org:2023-03-11
+        volumeMounts:
+        - name: upload
+          mountPath: /app/homepage/upload
+        envFrom:
+        - secretRef:
+            name: env
+      volumes:
+        - name: upload
+          hostPath:
+            path: /srv/homepage/upload
+            type: DirectoryOrCreate
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: celery
+  namespace: homepage
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: celery
+  template:
+    metadata:
+      labels:
+        app: celery
+    spec:
+      containers:
+      - name: upnl-org
+        image: ghcr.io/upnl/upnl-org:2023-03-11
+        envFrom:
+        - secretRef:
+            name: env
+        command: ["celery"]
+        args: ["worker", "-A", "run.celery"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: homepage
+  namespace: homepage
+spec:
+  selector:
+    app: web
+  type: ClusterIP
+  ports:
+  - port: 80
+    protocol: TCP
+    targetPort: 54321
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: homepage
+  namespace: homepage
+  annotations:
+    ingress.kubernetes.io/ssl-redirect: 'true'
+    ingress.kubernetes.io/force-hsts: "true"
+    ingress.kubernetes.io/hsts-max-age: "15778800"
+    ingress.kubernetes.io/hsts-include-subdomains: "false"
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts: ['upnl.org']
+    secretName: homepage-cert
+  rules:
+  - host: upnl.org
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: homepage
+            port:
+              number: 80
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backup-scripts
+  namespace: homepage
+data:
+  backup-db: |
+    #!/bin/bash
+    set -euo pipefail; IFS=$'\n\t'
+    apt update && apt install -y awscli
+    PGPASSWORD="$POSTGRES_PASSWORD" pg_dump \
+      --format=custom \
+      --host="$POSTGRES_HOST" \
+      --port="$POSTGRES_PORT" \
+      --username="$POSTGRES_USER" \
+      "$POSTGRES_DB" |
+        aws --region ap-northeast-2 s3 cp - \
+        "s3://upnl-backups/upnl.org/pg_dump-$(date -Im).dump"
+  backup-upload: |
+    #!/bin/bash
+    set -euo pipefail; IFS=$'\n\t'
+    apt update && apt install -y awscli bc
+
+    CHECKPOINT_PATH="$(mktemp)"
+    cp /mnt/scripts/checkpoint "$CHECKPOINT_PATH"
+    chmod +x "$CHECKPOINT_PATH"
+
+    TOTAL_SIZE="$(du -bs /mnt/upload/ | cut -f1)"
+    tar \
+      --create \
+      --record-size=10240 \
+      --checkpoint=10000 \
+      --checkpoint-action="exec=$CHECKPOINT_PATH \$TAR_CHECKPOINT $TOTAL_SIZE" \
+      --directory=/mnt \
+      upload |
+        aws --region ap-northeast-2 s3 cp - \
+        "s3://upnl-backups/upnl.org/upload-$(date -Im).tar"
+  checkpoint: |
+    #!/bin/bash
+    set -euo pipefail; IFS=$'\n\t'
+    CURRENT_CHECKPOINT="$1"
+    CURRENT_SIZE="$(( (CURRENT_CHECKPOINT - 1)*10240 ))"
+    CURRENT_SIZE_MIB="$(echo "scale=2; ${CURRENT_SIZE} / 1048576" | bc -l)"
+    TOTAL_SIZE="$2"
+    TOTAL_SIZE_MIB="$(echo "scale=2; ${TOTAL_SIZE} / 1048576" | bc -l)"
+    PERCENTAGE="$(echo "scale=2; ${CURRENT_SIZE} / ${TOTAL_SIZE} * 100" | bc -l)"
+    echo "${CURRENT_SIZE_MIB}MiB / ${TOTAL_SIZE_MIB}MiB (${PERCENTAGE}%)" >&2

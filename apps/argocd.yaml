@@ -1,0 +1,51 @@
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  namespace: argocd
+  name: argocd
+spec:
+  destination:
+    namespace: argocd
+    server: 'https://kubernetes.default.svc'
+  source:
+    repoURL: 'https://argoproj.github.io/argo-helm'
+    targetRevision: 5.39.0
+    chart: argo-cd
+    helm:
+      values: |
+        configs:
+          cm:
+            url: 'https://cd.upnl.org'
+            admin.enabled: false
+            dex.config: |
+              connectors:
+              - type: github
+                id: github
+                name: GitHub
+                config:
+                  clientID: Iv1.b7d12f8386d8929a
+                  clientSecret: $dex-auth:github.clientSecret
+                  orgs:
+                  - name: upnl
+          params:
+            server.insecure: true
+          rbac:
+            policy.default: role:admin
+        server:
+          ingress:
+            enabled: true
+            ingressClassName: nginx
+            annotations:
+              cert-manager.io/cluster-issuer: letsencrypt-prod
+            hosts:
+            - cd.upnl.org
+            tls:
+            - hosts:
+              - cd.upnl.org
+              secretName: ingress-argocd
+  project: default
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
