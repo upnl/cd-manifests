@@ -1,0 +1,27 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: promotion-bot
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: discordjs
+  namespace: promotion-bot
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: discordjs
+  template:
+    metadata:
+      labels:
+        app: discordjs
+    spec:
+      containers:
+      - name: discordjs
+        image: ghcr.io/coinmoles/promotion-bot:2023-11-20
+        envFrom:
+        - secretRef:
+            name: env
