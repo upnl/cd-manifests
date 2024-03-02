@@ -21,7 +21,7 @@ spec:
     spec:
       containers:
       - name: discordjs
-        image: ghcr.io/coinmoles/promotion-bot:2024-03-02
+        image: ghcr.io/coinmoles/promotion-bot:2024-03-02_2
         envFrom:
         - secretRef:
             name: env
