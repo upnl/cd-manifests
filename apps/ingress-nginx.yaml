@@ -3,7 +3,7 @@ apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   namespace: argocd
-  name: nginx-ingress-controller
+  name: ingress-nginx
 spec:
   destination:
     namespace: kube-system
