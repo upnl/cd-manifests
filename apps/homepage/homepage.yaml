@@ -105,6 +105,8 @@ spec:
         envFrom:
         - secretRef:
             name: env
+      imagePullSecrets:
+      - name: upnl-ghcr
       volumes:
         - name: upload
           hostPath:
