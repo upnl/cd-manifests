@@ -38,12 +38,8 @@ spec:
             ingressClassName: nginx
             annotations:
               cert-manager.io/cluster-issuer: letsencrypt-prod
-            hosts:
-            - cd.upnl.org
-            tls:
-            - hosts:
-              - cd.upnl.org
-              secretName: ingress-argocd
+            hostname: cd.upnl.org
+            tls: true
   project: default
   syncPolicy:
     automated:
