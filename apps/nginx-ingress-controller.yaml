@@ -20,8 +20,8 @@ spec:
           service:
             type: NodePort
             nodePorts:
-              http: 40080
-              https: 40443
+              http: 31080
+              https: 31443
         config:
           use-forwarded-headers: 'true'
           force-ssl-redirect: 'true'
