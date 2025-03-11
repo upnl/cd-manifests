@@ -129,11 +129,14 @@ spec:
       containers:
       - name: upnl-org
         image: ghcr.io/upnl/upnl-org:2023-03-11
+
         envFrom:
         - secretRef:
             name: env
         command: ["celery"]
         args: ["worker", "-A", "run.celery"]
+      imagePullSecrets:
+      - name: upnl-ghcr
 ---
 apiVersion: v1
 kind: Service
