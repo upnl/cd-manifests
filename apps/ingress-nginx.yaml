@@ -18,6 +18,9 @@ spec:
           ingressClassResource:
             default: true
           service:
+            admissionWebhooks:
+              annotations:
+                argocd.argoproj.io/hook: PostSync
             type: NodePort
             nodePorts:
               http: 30080
