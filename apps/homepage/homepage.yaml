@@ -98,7 +98,7 @@ spec:
     spec:
       containers:
       - name: upnl-org
-        image: ghcr.io/upnl/upnl-org:latest
+        image: ghcr.io/upnl/upnl-org:13882192622
         volumeMounts:
         - name: upload
           mountPath: /app/homepage/upload
